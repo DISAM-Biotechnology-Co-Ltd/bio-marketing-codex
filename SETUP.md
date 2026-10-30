@@ -29,6 +29,22 @@ git -C ~/.codex/skills/bio-marketing pull
 - **網路搜尋**：文獻與法規查證需要網路搜尋。沒有網路搜尋時，skill 會把未查證的文獻全部標 E7，並告訴 PM。設定鍵名以官方 config reference 為準：https://learn.chatgpt.com/docs/config-file/config-reference
 - **Python 3**：`scripts/check_claims.py` 只用標準函式庫，不需安裝套件。
 
+## 選單式提問（建議開啟）
+
+Codex 有原生的提問工具 `request_user_input`，會跳出選單讓 PM 點選，比打數字回覆穩定。它預設只在 **Plan mode** 開放；一般模式要在 `~/.codex/config.toml` 開啟實驗功能：
+
+```toml
+suppress_unstable_features_warning = true   # 選填：關掉實驗功能警告，必須放在檔案最上方、任何 [區塊] 之前
+
+[features]
+default_mode_request_user_input = true
+```
+
+- 已經有 `[features]` 區塊的話，把那一行加進原本的區塊，不要重複寫 `[features]`。
+- 這是未寫進官方文件的實驗功能，Codex 更新後可能改名或移除。可用 `codex features list` 確認目前名稱與狀態。
+- 沒開也能用：skill 會改用編號文字選項提問，PM 回覆數字即可。
+- `codex exec` 與 subagent 不支援這個工具，一律走編號文字選項。
+
 ## 鎖定模型（減少模型更新造成的行為漂移）
 
 skill 本身無法指定模型，要在 Codex 設定中鎖定。建議為這個 skill 建一個 profile，例如 `~/.codex/bio-marketing.config.toml`：
