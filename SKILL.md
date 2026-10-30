@@ -21,6 +21,7 @@ description: 生技產品／原料的科學到行銷企劃流程：整理產品�
 6. **先讀再寫**：每個 Phase 開始前，讀完該 Phase 指定的檔案。不得憑印象套用格式。
 7. **本 skill 直接產出成品**（企劃稿、簡報逐頁稿、HTML），只有「簡報提示詞／NotebookLM 提示詞」這個格式才是給其他 AI 用的 prompt。
 8. **路徑與工具**：文中「本 skill 資料夾」指這份 SKILL.md 所在的目錄，`references/`、`templates/`、`scripts/` 都相對於它。查證文獻與法規要用網路搜尋；若本次對話沒有網路搜尋可用，先告訴 PM，所有未能查證的文獻一律標 E7，不得憑記憶補上 PMID、DOI 或網址。
+9. **系列模式**：PM 在 Gate 0 選了系列模式時，每筆證據與宣稱都要標示屬於哪一款產品，不得把某一款的證據用來支撐另一款的宣稱。規則見 `references/series-mode.md`。
 
 ## 流程總覽
 
@@ -41,12 +42,16 @@ Phase 5 → Gate 5（翻譯）
 1. 讀取 PM 提供的所有素材（文字、圖片、PDF、試算表、網址）。PDF 用可用的 PDF 工具擷取文字（例如 Codex 的 PDF 外掛或 `pdftotext`）；讀不到的內容要明說，不得猜測。
 2. 整理產品摘要：產品名、成分與規格／劑量、劑型、品類、預定市場、公司背景、已知研究、素材限制。
 3. 判斷產品類別：人體保健、化粧品、醫療器材、食品應用、農業、動物營養、僅研究用途。
-4. 若素材或 PM 明確提到 DISAM 或 DISAM 產品（IMMIO、IMMIRA、IMMIRA Lens、IMMASOME、IMMORI、IMMAGRO、IMMIO FOOD、PCPP），讀 `references/disam/` 下的 `company-context.md`、`product-taxonomy.md`、`domain-routing.md`、`brand-language.md` 與對應的 `domains/*.md`。沒提到 DISAM 就不要載入。
+4. 若素材中有 2 款以上的成品（不是同一產品的多個成分），記下來，在 Gate 0 詢問是否用系列模式。
+5. 若素材或 PM 明確提到 DISAM 或 DISAM 產品（IMMIO、IMMIRA、IMMIRA Lens、IMMASOME、IMMORI、IMMAGRO、IMMIO FOOD、PCPP），讀 `references/disam/` 下的 `company-context.md`、`product-taxonomy.md`、`domain-routing.md`、`brand-language.md` 與對應的 `domains/*.md`。沒提到 DISAM 就不要載入。
 
-**Gate 0**：列出產品摘要，詢問（只問不確定的項目，最多 4 題）：
+**Gate 0**：列出產品摘要，詢問（只問不確定的項目，最多 4 題；有系列模式那題時最多 5 題）：
 - 摘要是否正確（正確／需要修正）
 - 目標市場（台灣／中國／美國／其他）
 - 產品類別（素材沒寫清楚時才問）
+- 素材有 2 款以上成品時：1. 系列模式（多款放在同一份企劃與簡報）／2. 只做其中一款（請寫出是哪一款）／3. 其他
+
+選了系列模式：先讀 `references/series-mode.md`，Gate 0 摘要改依其第 1 節逐款列出，之後各 Phase 依該檔調整。
 
 ## Phase 1　科學萃取
 
@@ -57,6 +62,8 @@ Phase 5 → Gate 5（翻譯）
    - 科學：缺劑量、缺規格、缺人體研究、缺法規資料等。
    - 公開資料：市場規模、成長趨勢、競品現況等網路查得到的資料。
    - 公司內部資料：單劑成本、MOQ、產能、交期、認證、專利、COA／SDS、起始配方等只有公司能提供的資料。
+
+系列模式：Phase 1 與 Gate 1 改依 `series-mode.md` 第 2 節。
 
 **Gate 1（策略）**：一次問三題：
 - 主打哪個協同假說（4 個選項）
@@ -76,6 +83,8 @@ Phase 5 → Gate 5（翻譯）
 2. 觀看方式：現場講述／會後寄送閱讀／兩者都要（分成講述版＋閱讀版）
 3. 會議長度與頁數：極速 10 分鐘・6 頁／標準 30 分鐘・10 頁／完整 60 分鐘・20 頁＋附錄。自訂頁數選「其他」，填任何數字都可以。
 4. 簡報目的：索取樣品／立案打樣評估／敲定商業條款（自訂選「其他」）
+
+系列模式：問頁數前先依 `series-mode.md` 第 3 節檢查頁數是否足夠。
 
 頁數是 PM 的選擇，不得自行改成別的數字。若 PM 選「其他」只填時間沒填頁數，依時間套用最接近的檔位，並在 Phase 4 的頁數分配表中讓 PM 看到。
 
@@ -108,6 +117,7 @@ Phase 5 → Gate 5（翻譯）
 
 1. 列出所有打算寫進對外內容的宣稱，包括簡報標題、主文案與 CTA 中的功效說法。
 2. 逐條整理成 claim_record，判定狀態：allowed／rewrite_required／prohibited／internal_only，並寫出 approved_wording。
+3. 系列模式：證據與宣稱依 `series-mode.md` 第 4 節標示產品；Gate 4、Gate 4.5 的表格依第 5 節加「產品」欄並分組。
 
 **Gate 4（宣稱確認，必停）**：用表格列出所有宣稱，欄位為：編號、原句、狀態、建議對外用字、依據證據與等級、理由。然後詢問：
 - 全部同意
@@ -132,6 +142,8 @@ PM 選「先停在這裡，只要內部工作稿」時，跳過 Gate 4.5，缺�
 ## Phase 4　產出
 
 輸出資料夾：目前工作目錄下的 `bio-marketing-output/<產品名>_<YYYYMMDD>/`。
+
+系列模式：輸出資料夾、各檔結構、簡報五幕與 bundle.json 的 `products` 欄位，依 `series-mode.md` 第 6、7 節。
 
 依 Gate 2 的選擇，**先讀對應範本，再寫檔**：
 

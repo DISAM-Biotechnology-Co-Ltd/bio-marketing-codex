@@ -607,6 +607,165 @@ class HtmlExternalFileTests(unittest.TestCase):
 # 輸入、檔案與 CLI
 # ---------------------------------------------------------------------------
 
+def make_series_bundle(**overrides) -> dict:
+    """可通過的系列模式 bundle：兩個產品，各一筆證據，另有一筆兩者共用的證據。"""
+    bundle = {
+        "products": [{"id": "p-a", "name": "產品 A"}, {"id": "p-b", "name": "產品 B"}],
+        "evidence_records": [
+            {"id": "ev-a", "products": ["p-a"], "evidence_tier": "E3", "verification": {"status": "verified"}},
+            {"id": "ev-b", "products": ["p-b"], "evidence_tier": "E3", "verification": {"status": "verified"}},
+            {"id": "ev-ab", "products": ["p-a", "p-b"], "evidence_tier": "E3", "verification": {"status": "verified"}},
+        ],
+        "claim_records": [
+            {
+                "id": "cl-a",
+                "product": "p-a",
+                "claim_text": "幫助維持日常活力",
+                "claim_type": "structure_function",
+                "status": "allowed",
+                "approved_wording": "幫助維持日常活力",
+                "evidence_refs": ["ev-a", "ev-ab"],
+            },
+            {
+                "id": "cl-series",
+                "product": "series",
+                "claim_text": "整個系列都能提升免疫力",
+                "claim_type": "human_efficacy",
+                "status": "rewrite_required",
+                "approved_wording": None,
+                "evidence_refs": ["ev-a", "ev-b"],
+            },
+        ],
+        "external_text": "靈芝萃取，幫助維持日常活力。",
+    }
+    bundle.update(overrides)
+    return bundle
+
+
+class SeriesModeTests(unittest.TestCase):
+    def test_valid_series_bundle_passes(self):
+        code, result = run_bundle(make_series_bundle())
+        self.assertEqual(code, 0, result)
+
+    def test_cross_product_evidence_fails(self):
+        bundle = make_series_bundle()
+        bundle["claim_records"][0]["evidence_refs"] = ["ev-b"]
+        code, result = run_bundle(bundle)
+        self.assertEqual(code, 1)
+        self.assertEqual(codes(result), {"PRODUCT_EVIDENCE_MISMATCH"})
+        self.assertIn("ev-b", result["violations"][0]["message"])
+
+    def test_rewrite_required_product_claim_is_also_checked(self):
+        bundle = make_series_bundle()
+        bundle["claim_records"][0].update(status="rewrite_required", evidence_refs=["ev-b"])
+        code, result = run_bundle(bundle)
+        self.assertEqual(code, 1)
+        self.assertIn("PRODUCT_EVIDENCE_MISMATCH", codes(result))
+
+    def test_prohibited_claim_is_not_checked(self):
+        bundle = make_series_bundle()
+        bundle["claim_records"][0].update(status="prohibited", evidence_refs=["ev-b"])
+        bundle["external_text"] = "靈芝萃取。"
+        code, result = run_bundle(bundle)
+        self.assertEqual(code, 0, result)
+
+    def test_series_efficacy_claim_missing_product_fails(self):
+        bundle = make_series_bundle()
+        bundle["claim_records"][1]["evidence_refs"] = ["ev-a"]
+        code, result = run_bundle(bundle)
+        self.assertEqual(code, 1)
+        self.assertEqual(codes(result), {"SERIES_CLAIM_EVIDENCE_GAP"})
+        self.assertIn("p-b", result["violations"][0]["message"])
+
+    def test_series_efficacy_detected_from_wording(self):
+        bundle = make_series_bundle()
+        bundle["claim_records"][1].update(claim_type="positioning", evidence_refs=["ev-a"])
+        code, result = run_bundle(bundle)
+        self.assertEqual(code, 1)
+        self.assertIn("SERIES_CLAIM_EVIDENCE_GAP", codes(result))
+
+    def test_shared_evidence_covers_series_claim(self):
+        bundle = make_series_bundle()
+        bundle["claim_records"][1]["evidence_refs"] = ["ev-ab"]
+        code, result = run_bundle(bundle)
+        self.assertEqual(code, 0, result)
+
+    def test_series_positioning_claim_is_exempt(self):
+        bundle = make_series_bundle()
+        bundle["claim_records"][1].update(
+            claim_text="同一套萃取平台的系列產品",
+            claim_type="business",
+            status="allowed",
+            approved_wording="同一套萃取平台的系列產品",
+            evidence_refs=["ev-a"],
+        )
+        code, result = run_bundle(bundle)
+        self.assertEqual(code, 0, result)
+
+    def test_series_structure_function_claim_needs_all_products(self):
+        # 中文功能性說法不會被 _human_efficacy 的英文規則抓到，仍須每款都有證據。
+        bundle = make_series_bundle()
+        bundle["claim_records"][1].update(
+            claim_text="整個系列都能幫助維持免疫",
+            claim_type="structure_function",
+            status="allowed",
+            approved_wording="整個系列都能幫助維持免疫",
+            evidence_refs=["ev-a"],
+        )
+        code, result = run_bundle(bundle)
+        self.assertEqual(code, 1, result)
+        self.assertIn("SERIES_CLAIM_EVIDENCE_GAP", codes(result))
+
+    def test_malformed_products_exit_2(self):
+        cases = {
+            "empty": [],
+            "not_list": {"id": "p-a"},
+            "reserved_id": [{"id": "series", "name": "系列"}],
+            "duplicate_id": [{"id": "p-a", "name": "A"}, {"id": "p-a", "name": "A2"}],
+            "missing_name": [{"id": "p-a"}],
+            "not_object": ["p-a"],
+        }
+        for name, products in cases.items():
+            with self.subTest(name):
+                code, result = run_bundle(make_series_bundle(products=products))
+                self.assertEqual(code, 2)
+                self.assertEqual(result["status"], "error")
+                self.assertTrue(any(error["path"].startswith("products") for error in result["errors"]))
+
+    def test_missing_evidence_products_exit_2(self):
+        for value in (None, [], ["p-unknown"], "p-a"):
+            with self.subTest(value):
+                bundle = make_series_bundle()
+                if value is None:
+                    del bundle["evidence_records"][0]["products"]
+                else:
+                    bundle["evidence_records"][0]["products"] = value
+                code, result = run_bundle(bundle)
+                self.assertEqual(code, 2)
+                self.assertEqual([error["path"] for error in result["errors"]], ["evidence_records[0].products"])
+
+    def test_unknown_claim_product_exit_2(self):
+        for value in (None, "p-unknown", ["p-a"]):
+            with self.subTest(value):
+                bundle = make_series_bundle()
+                if value is None:
+                    del bundle["claim_records"][0]["product"]
+                else:
+                    bundle["claim_records"][0]["product"] = value
+                code, result = run_bundle(bundle)
+                self.assertEqual(code, 2)
+                self.assertEqual([error["path"] for error in result["errors"]], ["claim_records[0].product"])
+
+    def test_single_product_bundle_ignores_product_fields(self):
+        # 沒有 products 時，證據與宣稱上的 products／product 不影響判定。
+        bundle = make_bundle()
+        bundle["evidence_records"][0]["products"] = ["p-other"]
+        bundle["claim_records"][0]["product"] = "p-a"
+        self.assertEqual(run_bundle(bundle), run_bundle(make_bundle()))
+        for fixture in LEGACY_FIXTURES.values():
+            self.assertEqual(check_claims.validate_input(fixture), [])
+
+
 class InputTests(unittest.TestCase):
     def test_missing_bundle_file_exits_2(self):
         exit_code, result = check_claims.run(["/nonexistent/bundle.json"])

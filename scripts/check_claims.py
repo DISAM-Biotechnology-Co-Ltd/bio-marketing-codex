@@ -9,8 +9,16 @@ bundle 格式：
       "evidence_records": [{"id", "evidence_tier", "evidence_kind"（選填）, "verification": {"status"}, "source": {...}}],
       "claim_records": [{"id", "claim_text", "claim_type", "status", "approved_wording", "evidence_refs"}],
       "external_text": "對外稿全文"  或  "external_files": ["相對於 bundle 的路徑.md", ...],
-      "speaker_deck": true/false   （選填，目前不影響判定）
+      "speaker_deck": true/false,  （選填，目前不影響判定）
+      "products": [{"id", "name"}, ...]   （選填，系列模式）
     }
+
+系列模式（bundle 有 products 時才啟用；沒有 products 時判定與單一產品完全相同）：
+    - products 為非空陣列，id 不可重複、不可用保留字 "series"
+    - 每筆 evidence_record 必須有 "products": [產品 id, ...]（非空，皆須列在 products 中）
+    - 每筆 claim_record 必須有 "product": 產品 id 或 "series"
+    - 單一產品的宣稱只能引用涵蓋該產品的證據；series 宣稱除 business、label_warning 外，
+      引用證據合起來須涵蓋所有產品
 
 對外檔案中 <!-- check:ignore-start --> 與 <!-- check:ignore-end --> 之間的文字
 不掃描違規詞、癌症治療語境與內部註記；被否決原句外流仍掃全文。
@@ -126,6 +134,13 @@ INTERNAL_MARKER_RE = re.compile(
     re.IGNORECASE,
 )
 
+# 系列模式：claim_record.product 用這個值代表「整個系列」，不得當作產品 id。
+SERIES_PRODUCT = "series"
+
+# series 宣稱中不需各產品證據涵蓋的 claim_type（公司／平台事實與法定警語）；
+# 其餘類型（含 structure_function 等功能性說法）都視為功效，必須每款都有證據。
+SERIES_EXEMPT_CLAIM_TYPES = {"business", "label_warning"}
+
 # 佔位符開頭，例如「［待補：單劑成本］」；出現時只列警告。
 PLACEHOLDER_PREFIXES = ("［", "[")
 
@@ -239,6 +254,9 @@ def validate_input(bundle: object) -> list[dict[str, str]]:
     if "speaker_deck" in bundle:
         _require(isinstance(bundle["speaker_deck"], bool), errors, "speaker_deck", "speaker_deck 必須是 true 或 false")
 
+    series_mode = "products" in bundle
+    product_ids = _validate_products(bundle["products"], errors) if series_mode else set()
+
     for position, record in enumerate(bundle.get("evidence_records") or []):
         path = f"evidence_records[{position}]"
         if not isinstance(record, dict):
@@ -264,6 +282,16 @@ def validate_input(bundle: object) -> list[dict[str, str]]:
             f"{path}.evidence_tier",
             f"evidence_kind 為 {kind} 時，evidence_tier 必須是 {NON_LITERATURE_TIER}",
         )
+        if series_mode:
+            products = record.get("products")
+            _require(
+                isinstance(products, list)
+                and bool(products)
+                and all(isinstance(item, str) and item in product_ids for item in products),
+                errors,
+                f"{path}.products",
+                "系列模式下 products 必須是非空陣列，且每個值都是 products 中的產品 id",
+            )
 
     for position, record in enumerate(bundle.get("claim_records") or []):
         path = f"claim_records[{position}]"
@@ -304,7 +332,40 @@ def validate_input(bundle: object) -> list[dict[str, str]]:
             f"{path}.highest_evidence_tier",
             f"highest_evidence_tier 必須是 {'、'.join(VALID_TIERS)} 之一",
         )
+        if series_mode:
+            product = record.get("product")
+            _require(
+                isinstance(product, str) and (product in product_ids or product == SERIES_PRODUCT),
+                errors,
+                f"{path}.product",
+                f"系列模式下 product 必須是 products 中的產品 id 或 {SERIES_PRODUCT}",
+            )
     return errors
+
+
+def _validate_products(products: object, errors: list[dict[str, str]]) -> set[str]:
+    """檢查系列模式的 products 陣列；回傳格式正確的產品 id 集合。"""
+    if not (isinstance(products, list) and products):
+        errors.append(_issue("INPUT_INVALID", "products", "products 必須是非空陣列"))
+        return set()
+    product_ids: set[str] = set()
+    for position, product in enumerate(products):
+        path = f"products[{position}]"
+        if not isinstance(product, dict):
+            errors.append(_issue("INPUT_INVALID", path, "product 必須是 JSON 物件"))
+            continue
+        product_id = product.get("id")
+        if not (isinstance(product_id, str) and product_id):
+            errors.append(_issue("INPUT_INVALID", f"{path}.id", "缺少 id"))
+        elif product_id == SERIES_PRODUCT:
+            errors.append(_issue("INPUT_INVALID", f"{path}.id", f"{SERIES_PRODUCT} 是保留字，不能當產品 id"))
+        elif product_id in product_ids:
+            errors.append(_issue("INPUT_INVALID", f"{path}.id", f"產品 id 重複：{product_id}"))
+        else:
+            product_ids.add(product_id)
+        name = product.get("name")
+        _require(isinstance(name, str) and bool(name.strip()), errors, f"{path}.name", "缺少 name")
+    return product_ids
 
 
 def _mask_html_styles(text: str) -> str:
@@ -353,8 +414,12 @@ def check_claim_records(
     evidence_by_id: dict[str, dict[str, Any]],
     violations: list[dict[str, str]],
     warnings: list[dict[str, str]],
+    product_ids: list[str] | None = None,
 ) -> dict[str, str | None]:
-    """規則 1–4：引用一致性、E7、E5 人體功效、核准用字。回傳每個 claim id 的最高證據層級。"""
+    """規則 1–4：引用一致性、E7、E5 人體功效、核准用字。回傳每個 claim id 的最高證據層級。
+
+    product_ids 不為 None 時（系列模式），另外檢查證據與產品是否對應。
+    """
     best_tiers: dict[str, str | None] = {}
     for position, claim in enumerate(claims):
         path = f"claim_records[{position}]"
@@ -421,6 +486,32 @@ def check_claim_records(
                     violations.append(
                         _issue("REGULATION_WITHOUT_URL", f"{path}.evidence_refs", f"{item['id']} 是法規證據，必須附官方網址")
                     )
+        # 系列模式：A 產品的證據不能支撐 B 產品；series 的功效宣稱要涵蓋所有產品。
+        if product_ids is not None and status in ("allowed", "rewrite_required"):
+            product = claim["product"]
+            if product == SERIES_PRODUCT:
+                covered = {covered_id for item in linked for covered_id in item["products"]}
+                missing = [product_id for product_id in product_ids if product_id not in covered]
+                if missing and claim.get("claim_type") not in SERIES_EXEMPT_CLAIM_TYPES:
+                    violations.append(
+                        _issue(
+                            "SERIES_CLAIM_EVIDENCE_GAP",
+                            f"{path}.evidence_refs",
+                            f"series 的功效宣稱，引用證據未涵蓋產品：{'、'.join(missing)}；"
+                            "請補齊各產品的證據，或改成單一產品宣稱",
+                        )
+                    )
+            else:
+                for item in linked:
+                    if product not in item["products"]:
+                        violations.append(
+                            _issue(
+                                "PRODUCT_EVIDENCE_MISMATCH",
+                                f"{path}.evidence_refs",
+                                f"{item['id']} 的證據對象是 {'、'.join(item['products'])}，不能支撐產品 {product} 的宣稱",
+                            )
+                        )
+
         if (
             allowed
             and claim.get("claim_type") in REGULATION_BACKED_CLAIM_TYPES
@@ -629,7 +720,8 @@ def check_bundle(bundle: dict[str, Any], base_dir: Path) -> dict[str, Any]:
 
     evidence_by_id = _index(bundle["evidence_records"], "evidence", violations)
     _index(bundle["claim_records"], "claim", violations)
-    best_tiers = check_claim_records(bundle["claim_records"], evidence_by_id, violations, warnings)
+    product_ids = [product["id"] for product in bundle["products"]] if "products" in bundle else None
+    best_tiers = check_claim_records(bundle["claim_records"], evidence_by_id, violations, warnings, product_ids)
     for label, text in texts:
         check_external_text(label, text, violations, warnings)
     check_rejected_wording(bundle["claim_records"], best_tiers, texts, violations)
