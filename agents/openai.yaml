@@ -1,0 +1,6 @@
+interface:
+  display_name: "Bio-Marketing 科學到行銷企劃"
+  short_description: "生技產品從證據分級、宣稱審查到提案簡報的完整企劃流程"
+  default_prompt: "使用 $bio-marketing 分析這項生技產品素材，產出證據分級、宣稱審查後的企劃與提案簡報。"
+policy:
+  allow_implicit_invocation: false
