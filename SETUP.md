@@ -43,6 +43,7 @@ default_mode_request_user_input = true
 - 已經有 `[features]` 區塊的話，把那一行加進原本的區塊，不要重複寫 `[features]`。
 - 這是未寫進官方文件的實驗功能，Codex 更新後可能改名或移除。可用 `codex features list` 確認目前名稱與狀態。
 - 沒開也能用：skill 會改用編號文字選項提問，PM 回覆數字即可。
+- 這個工具每題只能單選。有可多選題的 Gate（輸出格式、簡報聽眾）一律用編號文字選項，PM 回覆如 `1,3`。
 - `codex exec` 與 subagent 不支援這個工具，一律走編號文字選項。
 
 ## 鎖定模型（減少模型更新造成的行為漂移）
