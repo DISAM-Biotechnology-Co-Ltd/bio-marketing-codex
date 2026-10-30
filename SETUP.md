@@ -4,7 +4,7 @@
 
 ## 安裝
 
-需要先取得 DISAM-Biotechnology-Co-Ltd 組織這個私人 repo 的存取權，並在電腦上登入 GitHub（例如 `gh auth login`）。
+需要先安裝 git。這是公開 repo，不需要登入 GitHub。
 
 用 git 直接下載到 Codex 的 skills 目錄，資料夾名稱維持 `bio-marketing`：
 

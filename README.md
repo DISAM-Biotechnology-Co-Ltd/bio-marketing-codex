@@ -11,5 +11,3 @@
 ```bash
 git clone https://github.com/DISAM-Biotechnology-Co-Ltd/bio-marketing-codex.git ~/.codex/skills/bio-marketing
 ```
-
-本 repo 為公司內部資料，請勿轉傳到組織外。
