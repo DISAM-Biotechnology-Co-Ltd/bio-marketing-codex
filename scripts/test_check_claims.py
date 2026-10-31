@@ -568,16 +568,21 @@ class IgnoreBlockTests(unittest.TestCase):
             exit_code, result = check_claims.run([str(path)])
         self.assertEqual(exit_code, 0, result)
 
+def run_external_file(name: str, content: str) -> tuple[int, dict]:
+    """把 content 寫成對外檔 name，以 external_files 執行檢查。"""
+    with tempfile.TemporaryDirectory() as tmp:
+        (Path(tmp) / name).write_text(content, encoding="utf-8")
+        bundle = make_bundle()
+        del bundle["external_text"]
+        bundle["external_files"] = [name]
+        path = Path(tmp) / "bundle.json"
+        path.write_text(json.dumps(bundle, ensure_ascii=False), encoding="utf-8")
+        return check_claims.run([str(path)])
+
+
 class HtmlExternalFileTests(unittest.TestCase):
     def _run_file(self, name: str, content: str) -> tuple[int, dict]:
-        with tempfile.TemporaryDirectory() as tmp:
-            (Path(tmp) / name).write_text(content, encoding="utf-8")
-            bundle = make_bundle()
-            del bundle["external_text"]
-            bundle["external_files"] = [name]
-            path = Path(tmp) / "bundle.json"
-            path.write_text(json.dumps(bundle, ensure_ascii=False), encoding="utf-8")
-            return check_claims.run([str(path)])
+        return run_external_file(name, content)
 
     def test_css_percentage_is_not_flagged(self):
         html = (
@@ -601,6 +606,72 @@ class HtmlExternalFileTests(unittest.TestCase):
     def test_markdown_percentage_is_still_flagged(self):
         _, result = self._run_file("brief.md", "width: 100%")
         self.assertIn("TW_PROHIBITED_TERM", codes(result))
+
+    def test_html_self_negation_warns(self):
+        exit_code, result = self._run_file("05_機轉互動頁.html", "<p>本圖不代表成品功效。</p>")
+        self.assertEqual(exit_code, 0, result)
+        self.assertIn("EXTERNAL_SELF_NEGATION", codes(result, "warnings"))
+
+
+class DeckFileTests(unittest.TestCase):
+    """規則 5b、8：簡報檔不得有［待補］，主訊息不寫自我否定句。"""
+
+    def _run_file(self, name: str, content: str) -> tuple[int, dict]:
+        return run_external_file(name, content)
+
+    def test_external_file_kind(self):
+        self.assertEqual(check_claims.external_file_kind("03_簡報_講述版.md"), "deck")
+        self.assertEqual(check_claims.external_file_kind("out/04_簡報_閱讀版.md"), "deck")
+        self.assertEqual(check_claims.external_file_kind("A_簡報_講述版.md"), "deck")
+        self.assertEqual(check_claims.external_file_kind("05_機轉互動頁.html"), "html")
+        self.assertEqual(check_claims.external_file_kind("02_對外企劃稿.md"), "other")
+
+    def test_placeholder_in_deck_fails(self):
+        exit_code, result = self._run_file("03_簡報_講述版.md", "- 頁面文字：\n  - ［待補：MOQ］\n")
+        self.assertEqual(exit_code, 1, result)
+        hits = [v for v in result["violations"] if v["code"] == "DECK_PLACEHOLDER"]
+        self.assertEqual([v["path"] for v in hits], ["external_files[0]:2"])
+
+    def test_placeholder_in_brief_only_warns(self):
+        exit_code, result = self._run_file("02_對外企劃稿.md", "MOQ：［待補：MOQ］")
+        self.assertEqual(exit_code, 0, result)
+        self.assertIn("PLACEHOLDER_PENDING", codes(result, "warnings"))
+
+    def test_pending_checklist_in_ignore_block_passes(self):
+        deck = (
+            "## 第 1 頁｜第一幕｜熟齡肌保養越來越複雜\n- 頁面文字：\n  - 幫助維持日常活力。\n"
+            "<!-- check:ignore-start -->\n## 會前待確認清單（PM 內部用，簡報前刪除）\n"
+            "| ［待補：MOQ］ | 第 9 頁 | 業務 |\n<!-- check:ignore-end -->\n"
+        )
+        exit_code, result = self._run_file("03_簡報_講述版.md", deck)
+        self.assertEqual(exit_code, 0, result)
+        self.assertEqual(result["warnings"], [])
+
+    def test_self_negation_on_slide_text_warns(self):
+        for line in (
+            "  - 本頁呈現配方定位，不代表成品功效已被測試。",
+            "  - 該研究不作為本品功效證明。",
+            "  - 此統計不能等同保養品市場規模。",
+            "  - 白樺汁研究僅作背景參考。",
+            "  - 目前沒有本產品的人體研究資料。",
+        ):
+            with self.subTest(line=line):
+                exit_code, result = self._run_file("03_簡報_講述版.md", "- 頁面文字：\n" + line + "\n")
+                self.assertEqual(exit_code, 0, result)
+                self.assertIn("EXTERNAL_SELF_NEGATION", codes(result, "warnings"))
+
+    def test_self_negation_in_speaker_note_and_source_is_allowed(self):
+        deck = (
+            "- 講者備註：研究使用白樺汁噴霧，不代表本產品測試結果。\n"
+            "- 來源：PMID 36961534，僅作背景參考。\n"
+        )
+        exit_code, result = self._run_file("03_簡報_講述版.md", deck)
+        self.assertEqual(exit_code, 0, result)
+        self.assertNotIn("EXTERNAL_SELF_NEGATION", codes(result, "warnings"))
+
+    def test_self_negation_not_checked_in_brief(self):
+        _, result = self._run_file("02_對外企劃稿.md", "此統計不能等同保養品市場規模。")
+        self.assertNotIn("EXTERNAL_SELF_NEGATION", codes(result, "warnings"))
 
 
 # ---------------------------------------------------------------------------

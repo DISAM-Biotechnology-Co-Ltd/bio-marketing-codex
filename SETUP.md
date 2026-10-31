@@ -29,6 +29,20 @@ git -C ~/.codex/skills/bio-marketing pull
 - **網路搜尋**：文獻與法規查證需要網路搜尋。沒有網路搜尋時，skill 會把未查證的文獻全部標 E7，並告訴 PM。設定鍵名以官方 config reference 為準：https://learn.chatgpt.com/docs/config-file/config-reference
 - **Python 3**：`scripts/check_claims.py` 只用標準函式庫，不需安裝套件。
 
+## DISAM 原料資料卡（做 DISAM 產品時必備）
+
+做 DISAM 產品（IMMIRA、IMMASOME 等）時，skill 會到 `~/DISAM-原料資料卡/` 找每個原料的資料卡，讀取規格、研究、檢測與商務條件。沒有資料卡時，skill 只能依 DM 判斷，會把公司自己的原料當成查不到的說法，簡報內容會很少。
+
+- 格式見 `templates/disam-ingredient-card.md`，一個原料一個檔案，例如 `IMMIRA.md`。
+- 資料卡含公司內部資料，**不得放進這個 repo**（本 repo 是公開的）。
+- 若公司把資料卡放在 Google Drive 共用資料夾，可以在本機建立捷徑，讓 `~/DISAM-原料資料卡` 指向它：
+
+```bash
+ln -s "<Google Drive 上資料卡資料夾的完整路徑>" ~/DISAM-原料資料卡
+```
+
+- 資料卡放在其他位置時，也可以在對話開始時直接告訴 skill 路徑。
+
 ## 選單式提問（建議開啟）
 
 Codex 有原生的提問工具 `request_user_input`，會跳出選單讓 PM 點選，比打數字回覆穩定。它預設只在 **Plan mode** 開放；一般模式要在 `~/.codex/config.toml` 開啟實驗功能：

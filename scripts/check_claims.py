@@ -24,6 +24,10 @@ bundle 格式：
 不掃描違規詞、癌症治療語境與內部註記；被否決原句外流仍掃全文。
 .html／.htm 對外檔的 <style> 區塊與 style 屬性不掃描（CSS 不是文案）；<script> 照常掃描。
 
+簡報檔（檔名 03_／04_ 開頭，或含「簡報_講述版」「簡報_閱讀版」）中的「［待補…」是違規；
+其他對外檔只列警告。簡報與 HTML 的頁面文字出現自我否定句型時列警告
+（簡報的「講者備註」「來源」欄不掃描，研究條件應寫在那裡）。
+
 輸出：stdout 印 JSON
     {"status": "pass|fail", "violations": [{"code","path","message"}], "warnings": [...]}
 輸入錯誤時印 {"status": "error", "errors": [...], "violations": [], "warnings": []}。
@@ -47,7 +51,7 @@ from typing import Any
 # 可維護常數
 # ---------------------------------------------------------------------------
 
-# 台灣食品／保健品／化粧品對外稿常見違規詞（對應 references/claim-rules.md 第 6 節）。
+# 台灣食品／保健品／化粧品對外稿常見違規詞（對應 references/claim-rules.md 第 7 節）。
 # 新增或刪除詞彙時直接改這裡；比對時不分大小寫。
 TAIWAN_PROHIBITED_TERMS = (
     # 疾病與醫療
@@ -153,6 +157,16 @@ _IGNORE_BLOCK_RE = re.compile(re.escape(IGNORE_START) + r".*?" + re.escape(IGNOR
 # HTML 對外檔的樣式不是文案（例如 `width: 100%`），掃描前遮掉 <style> 區塊與 style 屬性。
 # <script> 不遮：互動頁的文案常寫在 JS 字串裡，仍要掃描。
 HTML_SUFFIXES = (".html", ".htm")
+# 簡報對外檔：［待補］為違規，並掃描自我否定句型。
+DECK_FILENAME_RE = re.compile(r"^0[34]_|簡報_(?:講述|閱讀)版")
+# 簡報中這些欄位是研究條件與來源的位置，不掃描自我否定句型。
+DECK_NOTE_FIELD_RE = re.compile(r"^\s*[-*]?\s*(?:講者備註|來源)\s*[:：]")
+# 投影片主訊息不該出現的自我否定或限制說明（見 references/deck-architecture.md 第 7 節）。
+SELF_NEGATION_RE = re.compile(
+    r"不代表|不能等同|不等同於|不作為.{0,20}(?:證明|依據)|不能(?:用來|用於)?證明|"
+    r"僅(?:作|供|列為).{0,8}參考|尚未取得|目前(?:沒有|無).{0,12}(?:資料|研究|測試|數據)"
+)
+
 _HTML_STYLE_RE = re.compile(
     r"<style\b[^>]*>.*?</style\s*>|\sstyle\s*=\s*(?:\"[^\"]*\"|'[^']*')",
     re.DOTALL | re.IGNORECASE,
@@ -371,6 +385,16 @@ def _validate_products(products: object, errors: list[dict[str, str]]) -> set[st
 def _mask_html_styles(text: str) -> str:
     """把 HTML 的 <style> 區塊與 style 屬性換成空白（保留換行，行號不變）。"""
     return _HTML_STYLE_RE.sub(lambda m: re.sub(r"[^\n]", " ", m.group(0)), text)
+
+
+def external_file_kind(relative: str) -> str:
+    """依檔名判斷對外檔種類：deck（簡報逐頁稿）、html 或 other。"""
+    path = Path(relative)
+    if path.suffix.lower() in HTML_SUFFIXES:
+        return "html"
+    if DECK_FILENAME_RE.search(path.name):
+        return "deck"
+    return "other"
 
 
 def load_external_texts(bundle: dict[str, Any], base_dir: Path) -> list[tuple[str, str]]:
@@ -592,8 +616,9 @@ def check_external_text(
     text: str,
     violations: list[dict[str, str]],
     warnings: list[dict[str, str]],
+    kind: str = "other",
 ) -> None:
-    """規則 5、7：癌症治療語境、內部註記、台灣常見違規詞。check:ignore 區塊內不掃描。"""
+    """規則 5、7、8：癌症治療語境、內部註記、台灣常見違規詞、自我否定句型。check:ignore 區塊內不掃描。"""
     text = _mask_ignored_blocks(label, text, warnings)
 
     # 規則 5a：癌症與治療用語出現在同一句 → 違規；只提到癌症 → 警告，需人工確認。
@@ -632,9 +657,17 @@ def check_external_text(
         for match in INTERNAL_MARKER_RE.finditer(line):
             is_placeholder = match.group(0) == "待補" and match.start() > 0 and line[match.start() - 1] in PLACEHOLDER_PREFIXES
             if is_placeholder:
-                warnings.append(
-                    _issue("PLACEHOLDER_PENDING", where, f"對外稿仍有待補佔位符：{_snippet(line, match.start() - 1, match.end())}")
-                )
+                snippet = _snippet(line, match.start() - 1, match.end())
+                if kind == "deck":
+                    violations.append(
+                        _issue(
+                            "DECK_PLACEHOLDER",
+                            where,
+                            f"簡報不得出現待補佔位符，請改寫成已知內容並移到會前待確認清單：{snippet}",
+                        )
+                    )
+                else:
+                    warnings.append(_issue("PLACEHOLDER_PENDING", where, f"對外稿仍有待補佔位符：{snippet}"))
                 continue
             violations.append(
                 _issue(
@@ -643,6 +676,17 @@ def check_external_text(
                     f"對外稿出現內部註記「{match.group(0)}」：{_snippet(line, match.start(), match.end())}",
                 )
             )
+
+        # 規則 8：簡報與 HTML 主訊息的自我否定句型（只列警告）。
+        if kind in ("deck", "html") and not (kind == "deck" and DECK_NOTE_FIELD_RE.match(line)):
+            for match in SELF_NEGATION_RE.finditer(line):
+                warnings.append(
+                    _issue(
+                        "EXTERNAL_SELF_NEGATION",
+                        where,
+                        f"頁面文字出現自我否定句型「{match.group(0)}」，請改寫或移到講者備註：{_snippet(line, match.start(), match.end())}",
+                    )
+                )
 
         # 規則 7：台灣常見違規詞（先遮掉免責聲明）。
         for match in _PROHIBITED_TERMS_RE.finditer(_mask_disclaimers(line)):
@@ -722,8 +766,10 @@ def check_bundle(bundle: dict[str, Any], base_dir: Path) -> dict[str, Any]:
     _index(bundle["claim_records"], "claim", violations)
     product_ids = [product["id"] for product in bundle["products"]] if "products" in bundle else None
     best_tiers = check_claim_records(bundle["claim_records"], evidence_by_id, violations, warnings, product_ids)
-    for label, text in texts:
-        check_external_text(label, text, violations, warnings)
+    kinds = [external_file_kind(relative) for relative in bundle.get("external_files", [])]
+    for position, (label, text) in enumerate(texts):
+        kind = kinds[position] if position < len(kinds) else "other"
+        check_external_text(label, text, violations, warnings, kind)
     check_rejected_wording(bundle["claim_records"], best_tiers, texts, violations)
 
     return {"status": "fail" if violations else "pass", "violations": violations, "warnings": warnings}
