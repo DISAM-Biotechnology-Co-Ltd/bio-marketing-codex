@@ -639,7 +639,7 @@ class DeckFileTests(unittest.TestCase):
 
     def test_pending_checklist_in_ignore_block_passes(self):
         deck = (
-            "## 第 1 頁｜熟齡肌保養越來越複雜\n- 頁面文字：\n  - 幫助維持日常活力。\n"
+            "## 第 1 頁｜熟齡肌保養越來越複雜\n- 頁面文字：\n  - 幫助維持日常活力。\n- 插圖評估：不需要；只有文字重點\n"
             "<!-- check:ignore-start -->\n## 會前待確認清單（PM 內部用，簡報前刪除）\n"
             "| ［待補：MOQ］ | 第 9 頁 | 業務 |\n<!-- check:ignore-end -->\n"
         )
@@ -691,6 +691,109 @@ class DeckFileTests(unittest.TestCase):
     def test_self_negation_not_checked_in_brief(self):
         _, result = self._run_file("02_對外企劃稿.md", "此統計不能等同保養品市場規模。")
         self.assertNotIn("EXTERNAL_SELF_NEGATION", codes(result, "warnings"))
+
+
+APPEARANCE = "A slim clear glass ampoule with a matte white cap."
+SETTINGS = f"## 插圖製作設定（製作用，不要放在簡報上）\n- 產品外觀定義｜澄光安瓶｜模擬：{APPEARANCE}\n"
+PROMPT_LABEL = "- 插圖 Prompt（製作用，不要放在簡報上）："
+
+
+def product_page(prompt: str = f"{APPEARANCE} On a stone tray, no text.", slide_text: str = "新配方提案（模擬示意圖）") -> str:
+    return (
+        f"## 第 1 頁｜安瓶提案\n- 頁面文字：\n  - {slide_text}\n"
+        f"- 插圖評估：需要，含產品「澄光安瓶」；品牌 PM 需要想像成品\n- 插圖用途：呈現產品情境\n{PROMPT_LABEL}{prompt}\n"
+    )
+
+
+class DeckIllustrationTests(unittest.TestCase):
+    """規則 10：插圖評估、prompt 與產品外觀定義。"""
+
+    def _run(self, content: str, name: str = "03_簡報_講述版.md") -> tuple[int, dict]:
+        return run_external_file(name, content)
+
+    def test_product_page_with_verbatim_appearance_passes(self):
+        exit_code, result = self._run(SETTINGS + product_page())
+        self.assertEqual(exit_code, 0, result)
+        self.assertEqual(result["warnings"], [])
+
+    def test_page_without_assessment_warns(self):
+        exit_code, result = self._run("## 第 1 頁｜安瓶提案\n- 頁面文字：\n  - 新配方提案\n")
+        self.assertEqual(exit_code, 0, result)
+        self.assertIn("DECK_ILLUSTRATION_MISSING", codes(result, "warnings"))
+
+    def test_illustration_not_needed_needs_no_prompt(self):
+        exit_code, result = self._run("## 第 1 頁｜研究結果\n- 插圖評估：不需要；用圖表呈現\n")
+        self.assertEqual(exit_code, 0, result)
+        self.assertEqual(result["warnings"], [])
+
+    def test_assessment_and_prompt_must_agree(self):
+        for page in (
+            "## 第 1 頁｜情境\n- 插圖評估：需要，不含產品；呈現情境\n",
+            f"## 第 1 頁｜研究結果\n- 插圖評估：不需要；用圖表\n{PROMPT_LABEL}A stone tray.\n",
+            f"## 第 1 頁｜情境\n- 插圖評估：或許；呈現情境\n{PROMPT_LABEL}A stone tray.\n",
+            f"## 第 1 頁｜情境\n- 插圖評估：需要；呈現情境\n{PROMPT_LABEL}A stone tray.\n",
+        ):
+            with self.subTest(page=page):
+                exit_code, result = self._run(page)
+                self.assertEqual(exit_code, 1, result)
+                self.assertIn("ILLUSTRATION_PROMPT_MISMATCH", codes(result))
+
+    def test_page_without_product_needs_no_appearance(self):
+        page = f"## 第 1 頁｜情境\n- 插圖評估：需要，不含產品；呈現情境\n{PROMPT_LABEL}A calm bathroom shelf.\n"
+        exit_code, result = self._run(page)
+        self.assertEqual(exit_code, 0, result)
+
+    def test_appearance_must_be_verbatim(self):
+        prompt = APPEARANCE.replace("matte white", "glossy white") + " No text."
+        exit_code, result = self._run(SETTINGS + product_page(prompt=prompt))
+        self.assertEqual(exit_code, 1, result)
+        self.assertIn("PRODUCT_APPEARANCE_MISMATCH", codes(result))
+
+    def test_missing_appearance_definition_fails(self):
+        exit_code, result = self._run(product_page())
+        self.assertEqual(exit_code, 1, result)
+        self.assertIn("PRODUCT_APPEARANCE_MISMATCH", codes(result))
+
+    def test_simulated_page_needs_label_on_slide(self):
+        exit_code, result = self._run(SETTINGS + product_page(slide_text="新配方提案"))
+        self.assertEqual(exit_code, 1, result)
+        self.assertIn("SIMULATED_LABEL_MISSING", codes(result))
+
+    def test_label_in_production_field_does_not_count(self):
+        page = product_page(slide_text="新配方提案") + "- 建議視覺：模擬示意圖\n- 講者備註：這是模擬示意圖。\n"
+        _, result = self._run(SETTINGS + page)
+        self.assertIn("SIMULATED_LABEL_MISSING", codes(result))
+
+    def test_real_packaging_needs_no_simulated_label(self):
+        settings = SETTINGS.replace("｜模擬：", "｜實際包裝：")
+        exit_code, result = self._run(settings + product_page(slide_text="新配方提案"))
+        self.assertEqual(exit_code, 0, result)
+
+    def test_appearance_must_match_across_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "03_簡報_講述版.md").write_text(SETTINGS + product_page(), encoding="utf-8")
+            (Path(tmp) / "04_簡報_閱讀版.md").write_text(SETTINGS.replace("matte white", "glossy white"), encoding="utf-8")
+            bundle = make_bundle()
+            del bundle["external_text"]
+            bundle["external_files"] = ["03_簡報_講述版.md", "04_簡報_閱讀版.md"]
+            path = Path(tmp) / "bundle.json"
+            path.write_text(json.dumps(bundle, ensure_ascii=False), encoding="utf-8")
+            exit_code, result = check_claims.run([str(path)])
+        self.assertEqual(exit_code, 1, result)
+        self.assertIn("PRODUCT_APPEARANCE_INCONSISTENT", codes(result))
+
+    def test_prompt_is_exempt_from_self_negation_but_not_prohibited_terms(self):
+        page = f"## 第 1 頁｜情境\n- 插圖評估：需要，不含產品；呈現情境\n{PROMPT_LABEL}目前沒有研究資料的畫面\n"
+        _, result = self._run(page)
+        self.assertNotIn("EXTERNAL_SELF_NEGATION", codes(result, "warnings"))
+        exit_code, result = self._run(page.replace("目前沒有研究資料的畫面", "保證有效的畫面"))
+        self.assertEqual(exit_code, 1, result)
+        self.assertIn("TW_PROHIBITED_TERM", codes(result))
+
+    def test_appendix_page_is_not_a_deck_page(self):
+        exit_code, result = self._run("## 附錄 A1｜研發抽屜｜配方資料\n- 內容：起始配方\n")
+        self.assertEqual(exit_code, 0, result)
+        self.assertEqual(result["warnings"], [])
 
 
 # ---------------------------------------------------------------------------

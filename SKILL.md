@@ -9,7 +9,7 @@ description: 生技產品／原料的科學到行銷企劃流程：整理產品�
 
 ## 最高規則（違反任何一條都算失敗）
 
-1. **語言**：全程使用台灣繁體中文與台灣用語。只有 PM 在 Gate 5 選了翻譯，才產出其他語言。
+1. **語言**：全程使用台灣繁體中文與台灣用語。只有 PM 在 Gate 5 選了翻譯，才產出其他語言。例外：插圖 prompt 用英文（`references/visual-prompts.md`）。
 2. **停點**：流程中有 7 個 Gate（0、1、2、3、4、4.5、5）。每到一個 Gate：
    - 先用文字列出「目前結果摘要」與「已從素材採用的值」；
    - 再提問。本回合可用工具中有 `request_user_input` 時，**優先用它**：每題給選項並各附一行說明，自訂內容讓 PM 用工具內建的「Other」填寫。這個工具每題只能單選：該 Gate 有任何「可多選」的題目時（Gate 2 輸出格式、Gate 3 簡報聽眾），**整個 Gate 改用下一點的編號文字選項**，讓 PM 一次回答，不得把可多選題改成單選；
@@ -21,7 +21,7 @@ description: 生技產品／原料的科學到行銷企劃流程：整理產品�
 4. **Gate 4 不可省略**：即使 PM 說「直接全部做完」「不用問我」，Gate 0–3 可依合理預設帶過並在摘要中列出預設值，但 Gate 4（宣稱審查確認）一定要停下來讓 PM 確認。Gate 4.5 在這種情況下預設為「全部先寫［待補］」，並在 Gate 4 的摘要中列出待補清單，讓 PM 確認宣稱時也能看到。
 5. **不編造**：文獻、數據、p 值、樣本數、劑量、市場規模、單劑成本、MOQ、產能、交期、認證、專利都不得編造。查不到、或在 Gate 4.5 問過 PM 仍未提供的，寫「［待補：○○］」。
 6. **先讀再寫**：每個 Phase 開始前，讀完該 Phase 指定的檔案。不得憑印象套用格式。
-7. **本 skill 直接產出成品**（企劃稿、簡報逐頁稿、HTML），只有「簡報提示詞／NotebookLM 提示詞」這個格式才是給其他 AI 用的 prompt。
+7. **本 skill 直接產出成品**（企劃稿、簡報逐頁稿、HTML），只有「簡報提示詞／NotebookLM 提示詞」這個格式，以及簡報每頁的「插圖 Prompt」欄，才是給其他 AI 用的 prompt。插圖 Prompt 不得放上投影片。
 8. **路徑與工具**：文中「本 skill 資料夾」指這份 SKILL.md 所在的目錄，`references/`、`templates/`、`scripts/` 都相對於它。查證文獻與法規要用網路搜尋；若本次對話沒有網路搜尋可用，先告訴 PM，所有未能查證的文獻一律標 E7，不得憑記憶補上 PMID、DOI 或網址。
 9. **系列模式**：PM 在 Gate 0 選了系列模式時，每筆證據與宣稱都要標示屬於哪一款產品，不得把某一款的證據用來支撐另一款的宣稱。規則見 `references/series-mode.md`。
 
@@ -82,11 +82,14 @@ Phase 5 → Gate 5（翻譯）
   - 簡報提示詞／NotebookLM 提示詞
 - 宣稱邊界：保守合規型／科學教育型／商業溝通型（自訂選「其他」）
 
-**Gate 3（簡報情境）**：只有勾選「提案簡報逐頁稿」或「簡報提示詞／NotebookLM 提示詞」時才問。問之前先讀 `references/audience-and-delivery.md`。一次問四題：
+**Gate 3（簡報情境）**：只有勾選「提案簡報逐頁稿」或「簡報提示詞／NotebookLM 提示詞」時才問。問之前先讀 `references/audience-and-delivery.md` 與 `references/visual-prompts.md`。一次問五題：
 1. 簡報聽眾（可多選）：研發／配方、品牌 PM／行銷、採購／供應鏈、高層／創辦人。跨部門會審、通路／經銷選「其他」填寫。
 2. 觀看方式：現場講述／會後寄送閱讀／兩者都要（分成講述版＋閱讀版）
 3. 會議長度與頁數：極速 10 分鐘・6 頁／標準 30 分鐘・10 頁／完整 60 分鐘・20 頁＋附錄。自訂頁數選「其他」，填任何數字都可以。
 4. 簡報目的：索取樣品／立案打樣評估／敲定商業條款（自訂選「其他」）
+5. 簡報的產品有包裝設計了嗎：有，後續提供檔案／沒有，做模擬產品圖／不需要呈現產品外觀（例如原料提案）
+
+第 5 題：素材已附包裝檔時不問，列為採用值。選「有」時提醒 PM，生成插圖前要提供檔案。選「沒有」時，依 `visual-prompts.md` 第 4 節再追問定位，素材已有的項目不重問；拿到回答後才進入 Phase 2。PM 要求跳過問答時，預設為「不需要呈現產品外觀」，並列在摘要中。
 
 系列模式：問頁數前先依 `series-mode.md` 第 3 節檢查頁數是否足夠。
 
@@ -131,6 +134,8 @@ Phase 5 → Gate 5（翻譯）
 - 我要修改用字或剔除某幾條（選「其他」說明）
 - 先停在這裡，只要內部工作稿
 
+第 5 題選「沒有」時，在表格後列出定位摘要與產品外觀定義，PM 可在這裡一併更正。
+
 PM 修改後，更新 claim_record，再列一次修改後的表格確認，直到 PM 同意為止。PM 確認過的 rewrite_required 改寫版視同 allowed。
 
 PM 選「先停在這裡，只要內部工作稿」時，跳過 Gate 4.5，缺口全部列進內部稿的補資料任務表。
@@ -162,15 +167,16 @@ PM 選「先停在這裡，只要內部工作稿」時，跳過 Gate 4.5，缺�
 |---|---|---|
 | 內部工作稿（一律產出） | `templates/internal-workfile.md` | `01_內部工作稿.md` |
 | 對外企劃稿 | `templates/external-brief.md` | `02_對外企劃稿.md` |
-| 提案簡報逐頁稿 | `templates/deck-content.md`，並讀 `references/deck-architecture.md` | `03_簡報_講述版.md`、`04_簡報_閱讀版.md`（依觀看方式產出一份或兩份） |
+| 提案簡報逐頁稿 | `templates/deck-content.md`，並讀 `references/deck-architecture.md`、`references/visual-prompts.md` | `03_簡報_講述版.md`、`04_簡報_閱讀版.md`（依觀看方式產出一份或兩份） |
 | HTML5 機轉互動頁 | `templates/html5-mechanism.md` | `05_機轉互動頁.html` |
-| 簡報提示詞／NotebookLM 提示詞 | `templates/deck-prompt.md`、`templates/notebooklm-prompt.md`，並讀 `references/deck-architecture.md` | `06_簡報提示詞.md`、`07_NotebookLM提示詞.md` |
+| 簡報提示詞／NotebookLM 提示詞 | `templates/deck-prompt.md`、`templates/notebooklm-prompt.md`，並讀 `references/deck-architecture.md`、`references/visual-prompts.md` | `06_簡報提示詞.md`、`07_NotebookLM提示詞.md` |
 
 寫作規則：
 
 - 對外檔案（02–07）的功效宣稱只能逐字使用 Gate 4 確認的 approved_wording。不得放入內部註記、證據缺口、被否決的原句、E7 內容。
 - 痛點、情境、產業現況、提案邏輯、合作流程不必對應 claim id，要寫出實質內容；但不得夾帶產品效果（`claim-rules.md` 第 4 節）。
 - 簡報與 HTML 的標題、頁面文字、銜接句不寫自我否定或限制說明，研究條件放講者備註或來源欄（`deck-architecture.md` 第 7 節）。
+- 簡報每頁依 `visual-prompts.md` 判斷要不要插圖，需要的頁面寫 prompt。圖片同樣受宣稱規則約束；同一款產品的外觀定義逐字一致。
 - 「幕」是規劃用語，只用在內部工作稿的頁數分配表。對外檔案（02–07）不寫「第一幕」「五幕」「本幕」，也不把幕的名稱當章節標籤（`deck-architecture.md` 第 1 節）。
 - 內部工作稿保留所有缺口、風險、被否決的宣稱、E7 線索與補資料任務，包括所有「［待補］」項目的清單。
 
@@ -190,7 +196,7 @@ PM 選「先停在這裡，只要內部工作稿」時，跳過 Gate 4.5，缺�
 python3 "<本 skill 資料夾>/scripts/check_claims.py" "<輸出資料夾>/bundle.json"
 ```
 
-- 結束碼 0：通過。warnings 中的「［待補］」項目要在交付摘要中列給 PM；`EXTERNAL_SELF_NEGATION` 警告要回頭把該句移到講者備註或改寫，再重跑。
+- 結束碼 0：通過。warnings 中的「［待補］」項目要在交付摘要中列給 PM；`EXTERNAL_SELF_NEGATION` 警告要回頭把該句移到講者備註或改寫，`DECK_ILLUSTRATION_MISSING` 警告要補上插圖評估，再重跑。
 - 結束碼 1：有違規。回頭修正上游的 claim_record 或對應段落。不得只刪掉被抓到的字詞卻保留同樣的意思；也不得修改 bundle 來規避檢查。修正後重跑，直到通過。
 - 結束碼 2：bundle 格式錯誤，修正後重跑。
 
@@ -207,6 +213,7 @@ python3 "<本 skill 資料夾>/scripts/check_claims.py" "<輸出資料夾>/bundl
 - 產出了哪些檔案；
 - 程式檢查結果；
 - 「［待補］」清單；
+- 插圖怎麼做：先照「插圖製作設定」生成主視覺，prompt 不要放上簡報；有包裝檔要提供時一併提醒；
 - 需要法規或研發人員再確認的項目。
 
 ## Phase 5　在地化

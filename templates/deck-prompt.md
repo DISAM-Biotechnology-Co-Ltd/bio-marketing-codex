@@ -1,6 +1,6 @@
 # 範本：簡報提示詞（06_簡報提示詞.md）
 
-這是給其他 AI 簡報工具（如 Gamma、ChatGPT、Claude）使用的 prompt，不是簡報本身。寫之前必須先讀 `references/deck-architecture.md` 與 `references/audience-and-delivery.md`，並把以下變數填入實際值，不留大括號。
+這是給其他 AI 簡報工具（如 Gamma、ChatGPT、Claude）使用的 prompt，不是簡報本身。寫之前必須先讀 `references/deck-architecture.md`、`references/audience-and-delivery.md` 與 `references/visual-prompts.md`，並把以下變數填入實際值，不留大括號。
 
 ````markdown
 # 角色
@@ -32,6 +32,12 @@
 - 已查證研究（只能使用這些，不得自行補充其他文獻或數字）：
 {evidence 摘要列表：研究、年份、類型、對外摘要、來源}
 
+# 插圖
+逐頁判斷是否需要插圖；數據、法規、規格與比較表頁用圖表或表格。需要插圖的頁面，寫出英文生圖 prompt，並標明「製作用，不要放在簡報上」。
+- 風格設定：{English style lock}
+- 產品外觀定義｜{產品名}｜{模擬／實際包裝}：{English；不呈現產品外觀時省略這行}
+含產品的 prompt 要逐字使用上面的外觀定義。外觀為模擬時，該頁文字標示「模擬示意圖」。圖中不放文字與 logo，也不畫使用前後對比、效果、醫療或疾病意象、認證標章、真實品牌。
+
 # 只能使用的宣稱用字（逐字使用，不得改寫成更強的說法）
 {approved_wording 列表}
 
@@ -45,5 +51,5 @@
 （`check:ignore` 標記要原樣保留：`check_claims.py` 掃描違規詞時會略過標記內的禁止清單。但「被否決原句外流」檢查仍掃全文，包括標記內：禁止清單不得逐字寫出 Gate 4 被判為 prohibited、rewrite_required 或 internal_only 的原句，要改寫成類別描述，例如「疾病相關功效說法」「未經查證的文獻」。）
 
 # 每頁輸出格式
-標題（結論句，15 字內）／頁面文字／建議視覺／講者備註／銜接句
+標題（結論句，15 字內）／頁面文字／建議視覺／插圖評估／插圖用途／插圖 Prompt（製作用，不要放在簡報上）／講者備註／銜接句
 ````

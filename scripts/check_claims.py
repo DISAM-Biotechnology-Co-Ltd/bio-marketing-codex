@@ -29,6 +29,9 @@ bundle 格式：
 （簡報的「講者備註」「來源」欄不掃描，研究條件應寫在那裡）。
 所有對外檔出現「第一幕」「五幕」「本幕」等規劃用語都是違規（內部工作稿才可以用）。
 
+簡報每頁要有「插圖評估」，缺少時列警告；評估與「插圖 Prompt」要對得上。含產品的 prompt 要逐字
+包含該產品的「產品外觀定義」，所有對外檔的同款定義要一致；模擬產品圖的頁面要標示「模擬示意圖」。
+
 輸出：stdout 印 JSON
     {"status": "pass|fail", "violations": [{"code","path","message"}], "warnings": [...]}
 輸入錯誤時印 {"status": "error", "errors": [...], "violations": [], "warnings": []}。
@@ -161,7 +164,7 @@ HTML_SUFFIXES = (".html", ".htm")
 # 簡報對外檔：［待補］為違規，並掃描自我否定句型。
 DECK_FILENAME_RE = re.compile(r"^0[34]_|簡報_(?:講述|閱讀)版")
 # 簡報中這些欄位是研究條件與來源的位置，不掃描自我否定句型。
-DECK_NOTE_FIELD_RE = re.compile(r"^\s*[-*]?\s*(?:講者備註|來源)\s*[:：]")
+DECK_NOTE_FIELD_RE = re.compile(r"^\s*[-*]?\s*(?:講者備註|來源|插圖 ?Prompt[^:：]*)\s*[:：]", re.IGNORECASE)
 # 投影片主訊息不該出現的自我否定或限制說明（見 references/deck-architecture.md 第 7 節）。
 SELF_NEGATION_RE = re.compile(
     r"不代表|不能等同|不等同於|不作為.{0,20}(?:證明|依據)|不能(?:用來|用於)?證明|"
@@ -171,6 +174,17 @@ SELF_NEGATION_RE = re.compile(
 # 五幕是規劃用語，不得出現在對外檔（見 references/deck-architecture.md 第 1 節）。
 # 只比對這些寫法，避免誤判「字幕」「螢幕」「開幕」。
 ACT_LABEL_RE = re.compile(r"[一二三四五六七八九十\d]\s*幕|本幕|每幕|\|\s*幕\s*\|")
+
+# 插圖欄位（見 references/visual-prompts.md）；比對前已做 NFKC，全形標點已轉成半形。
+DECK_PAGE_RE = re.compile(r"^##\s*第\s*\d+\s*頁")
+DECK_HEADING_RE = re.compile(r"^#{1,2}\s")
+ILLUSTRATION_ASSESS_RE = re.compile(r"^\s*[-*]?\s*插圖評估\s*:\s*(.*)$")
+ILLUSTRATION_PROMPT_RE = re.compile(r"^\s*[-*]?\s*插圖 ?Prompt[^:]*:\s*(.*)$", re.IGNORECASE)
+ILLUSTRATION_PRODUCT_RE = re.compile(r"含產品「([^」]+)」")
+PRODUCT_APPEARANCE_RE = re.compile(r"^\s*[-*]?\s*產品外觀定義\|(.+?)\|(模擬|實際包裝)\s*:\s*(.+?)\s*$")
+# 這些欄位不會出現在投影片上，「模擬示意圖」寫在這裡不算標示。
+NON_SLIDE_FIELD_RE = re.compile(r"^\s*[-*]?\s*(?:插圖|建議視覺|講者備註|銜接句|宣稱來源|來源)")
+SIMULATED_LABEL = "模擬示意圖"
 
 _HTML_STYLE_RE = re.compile(
     r"<style\b[^>]*>.*?</style\s*>|\sstyle\s*=\s*(?:\"[^\"]*\"|'[^']*')",
@@ -722,6 +736,90 @@ def _first_leak(needle: str, normalized_texts: list[tuple[str, str]]) -> str | N
     return None
 
 
+def _normalized_lines(label: str, text: str) -> list[str]:
+    """遮掉 check:ignore 區塊並統一全形半形，行號不變。"""
+    masked = _mask_ignored_blocks(label, text, [])
+    return [unicodedata.normalize("NFKC", line) for line in masked.split("\n")]
+
+
+def _check_deck_page(
+    where: str,
+    page_lines: list[str],
+    appearances: dict[str, tuple[str, str]],
+    violations: list[dict[str, str]],
+    warnings: list[dict[str, str]],
+) -> None:
+    assess = prompt = None
+    for line in page_lines:
+        assess_match = ILLUSTRATION_ASSESS_RE.match(line)
+        prompt_match = ILLUSTRATION_PROMPT_RE.match(line)
+        if assess_match:
+            assess = assess_match.group(1).strip()
+        elif prompt_match:
+            prompt = prompt_match.group(1).strip()
+
+    if assess is None:
+        warnings.append(_issue("DECK_ILLUSTRATION_MISSING", where, "這一頁沒有插圖評估"))
+        return
+    if assess.startswith("不需要"):
+        if prompt:
+            violations.append(_issue("ILLUSTRATION_PROMPT_MISMATCH", where, "插圖評估為不需要，卻有插圖 Prompt"))
+        return
+    if not assess.startswith("需要"):
+        violations.append(_issue("ILLUSTRATION_PROMPT_MISMATCH", where, f"插圖評估要以「需要」或「不需要」開頭：{assess}"))
+        return
+    if not prompt:
+        violations.append(_issue("ILLUSTRATION_PROMPT_MISMATCH", where, "插圖評估為需要，卻沒有插圖 Prompt"))
+        return
+
+    product = ILLUSTRATION_PRODUCT_RE.search(assess)
+    if not product:
+        if "不含產品" not in assess:
+            violations.append(_issue("ILLUSTRATION_PROMPT_MISMATCH", where, f"插圖評估要寫明含產品「產品名」或不含產品：{assess}"))
+        return
+    name = product.group(1)
+    appearance = appearances.get(name)
+    if appearance is None:
+        violations.append(_issue("PRODUCT_APPEARANCE_MISMATCH", where, f"找不到「{name}」的產品外觀定義"))
+        return
+    mode, definition = appearance
+    if definition not in prompt:
+        violations.append(_issue("PRODUCT_APPEARANCE_MISMATCH", where, f"插圖 Prompt 沒有逐字包含「{name}」的產品外觀定義"))
+    if mode == "模擬" and not any(SIMULATED_LABEL in line and not NON_SLIDE_FIELD_RE.match(line) for line in page_lines):
+        violations.append(_issue("SIMULATED_LABEL_MISSING", where, f"模擬產品圖的頁面文字要標示「{SIMULATED_LABEL}」"))
+
+
+def check_illustrations(
+    texts: list[tuple[str, str]],
+    kinds: list[str],
+    violations: list[dict[str, str]],
+    warnings: list[dict[str, str]],
+) -> None:
+    """規則 10：插圖評估與 prompt 對得上；同款產品的外觀定義在所有對外檔逐字一致。"""
+    appearances: dict[str, tuple[str, str]] = {}
+    pages: list[tuple[str, list[str]]] = []
+    for position, (label, text) in enumerate(texts):
+        kind = kinds[position] if position < len(kinds) else "other"
+        current: list[str] | None = None
+        for line_no, line in enumerate(_normalized_lines(label, text), start=1):
+            where = f"{label}:{line_no}"
+            match = PRODUCT_APPEARANCE_RE.match(line)
+            if match:
+                name, mode, definition = match.groups()
+                if name in appearances and appearances[name] != (mode, definition):
+                    violations.append(_issue("PRODUCT_APPEARANCE_INCONSISTENT", where, f"「{name}」的產品外觀定義與先前不一致"))
+                appearances.setdefault(name, (mode, definition))
+            if DECK_HEADING_RE.match(line):
+                current = None
+            if kind == "deck" and DECK_PAGE_RE.match(line):
+                current = []
+                pages.append((where, current))
+            if current is not None:
+                current.append(line)
+    for where, page_lines in pages:
+        _check_deck_page(where, page_lines, appearances, violations, warnings)
+
+
 def check_rejected_wording(
     claims: list[dict[str, Any]],
     best_tiers: dict[str, str | None],
@@ -785,6 +883,7 @@ def check_bundle(bundle: dict[str, Any], base_dir: Path) -> dict[str, Any]:
     for position, (label, text) in enumerate(texts):
         kind = kinds[position] if position < len(kinds) else "other"
         check_external_text(label, text, violations, warnings, kind)
+    check_illustrations(texts, kinds, violations, warnings)
     check_rejected_wording(bundle["claim_records"], best_tiers, texts, violations)
 
     return {"status": "fail" if violations else "pass", "violations": violations, "warnings": warnings}
