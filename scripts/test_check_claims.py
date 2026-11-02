@@ -639,7 +639,7 @@ class DeckFileTests(unittest.TestCase):
 
     def test_pending_checklist_in_ignore_block_passes(self):
         deck = (
-            "## 第 1 頁｜第一幕｜熟齡肌保養越來越複雜\n- 頁面文字：\n  - 幫助維持日常活力。\n"
+            "## 第 1 頁｜熟齡肌保養越來越複雜\n- 頁面文字：\n  - 幫助維持日常活力。\n"
             "<!-- check:ignore-start -->\n## 會前待確認清單（PM 內部用，簡報前刪除）\n"
             "| ［待補：MOQ］ | 第 9 頁 | 業務 |\n<!-- check:ignore-end -->\n"
         )
@@ -668,6 +668,25 @@ class DeckFileTests(unittest.TestCase):
         exit_code, result = self._run_file("03_簡報_講述版.md", deck)
         self.assertEqual(exit_code, 0, result)
         self.assertNotIn("EXTERNAL_SELF_NEGATION", codes(result, "warnings"))
+
+    def test_act_label_fails_in_any_external_file(self):
+        for name, line in (
+            ("03_簡報_講述版.md", "## 第 1 頁｜第一幕｜熟齡肌保養越來越複雜"),
+            ("03_簡報_講述版.md", "- 講者備註：第五幕會說明合作流程。"),
+            ("04_簡報_閱讀版.md", "- 內容：本幕說明研究背景。"),
+            ("03_簡報_講述版.md", "| 幕 | 頁碼 | 頁數 |"),
+            ("02_對外企劃稿.md", "簡報採五幕敘事。"),
+            ("06_簡報提示詞.md", "第 1 幕：市場現況"),
+            ("05_機轉互動頁.html", "<h2>第三幕</h2>"),
+        ):
+            with self.subTest(name=name, line=line):
+                exit_code, result = self._run_file(name, line + "\n")
+                self.assertEqual(exit_code, 1, result)
+                self.assertIn("EXTERNAL_ACT_LABEL", codes(result))
+
+    def test_ordinary_words_with_mu_pass(self):
+        exit_code, result = self._run_file("03_簡報_講述版.md", "- 建議視覺：螢幕畫面搭配字幕，呈現新廠開幕與幕後製程。\n")
+        self.assertEqual(exit_code, 0, result)
 
     def test_self_negation_not_checked_in_brief(self):
         _, result = self._run_file("02_對外企劃稿.md", "此統計不能等同保養品市場規模。")

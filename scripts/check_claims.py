@@ -27,6 +27,7 @@ bundle 格式：
 簡報檔（檔名 03_／04_ 開頭，或含「簡報_講述版」「簡報_閱讀版」）中的「［待補…」是違規；
 其他對外檔只列警告。簡報與 HTML 的頁面文字出現自我否定句型時列警告
 （簡報的「講者備註」「來源」欄不掃描，研究條件應寫在那裡）。
+所有對外檔出現「第一幕」「五幕」「本幕」等規劃用語都是違規（內部工作稿才可以用）。
 
 輸出：stdout 印 JSON
     {"status": "pass|fail", "violations": [{"code","path","message"}], "warnings": [...]}
@@ -166,6 +167,10 @@ SELF_NEGATION_RE = re.compile(
     r"不代表|不能等同|不等同於|不作為.{0,20}(?:證明|依據)|不能(?:用來|用於)?證明|"
     r"僅(?:作|供|列為).{0,8}參考|尚未取得|目前(?:沒有|無).{0,12}(?:資料|研究|測試|數據)"
 )
+
+# 五幕是規劃用語，不得出現在對外檔（見 references/deck-architecture.md 第 1 節）。
+# 只比對這些寫法，避免誤判「字幕」「螢幕」「開幕」。
+ACT_LABEL_RE = re.compile(r"[一二三四五六七八九十\d]\s*幕|本幕|每幕|\|\s*幕\s*\|")
 
 _HTML_STYLE_RE = re.compile(
     r"<style\b[^>]*>.*?</style\s*>|\sstyle\s*=\s*(?:\"[^\"]*\"|'[^']*')",
@@ -618,7 +623,7 @@ def check_external_text(
     warnings: list[dict[str, str]],
     kind: str = "other",
 ) -> None:
-    """規則 5、7、8：癌症治療語境、內部註記、台灣常見違規詞、自我否定句型。check:ignore 區塊內不掃描。"""
+    """規則 5、7、8、9：癌症治療語境、內部註記、台灣常見違規詞、自我否定句型、規劃用語。check:ignore 區塊內不掃描。"""
     text = _mask_ignored_blocks(label, text, warnings)
 
     # 規則 5a：癌症與治療用語出現在同一句 → 違規；只提到癌症 → 警告，需人工確認。
@@ -687,6 +692,16 @@ def check_external_text(
                         f"頁面文字出現自我否定句型「{match.group(0)}」，請改寫或移到講者備註：{_snippet(line, match.start(), match.end())}",
                     )
                 )
+
+        # 規則 9：規劃用語「幕」外流（講者備註也會進最終簡報，一併掃描）。
+        for match in ACT_LABEL_RE.finditer(line):
+            violations.append(
+                _issue(
+                    "EXTERNAL_ACT_LABEL",
+                    where,
+                    f"對外檔案不得出現規劃用語「{match.group(0)}」，請刪除；頁數分配表寫在內部工作稿：{_snippet(line, match.start(), match.end())}",
+                )
+            )
 
         # 規則 7：台灣常見違規詞（先遮掉免責聲明）。
         for match in _PROHIBITED_TERMS_RE.finditer(_mask_disclaimers(line)):

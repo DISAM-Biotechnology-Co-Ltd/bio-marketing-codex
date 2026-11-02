@@ -123,6 +123,11 @@
   - 必須：規格與 MOQ 建成 `company_fact`（verified）；R1 依體外研究標 E5、`partially_verified`；R2「可對外引用」為否 → 相關宣稱 `internal_only`；交期「可對外說明」為否 → 不進對外稿
   - 不可：把 R2 的結果或交期放進對外稿；把資料卡內容複製進 skill 資料夾
 
+### C13　簡報檔不出現「幕」
+素材：同 C8；輸出格式選提案簡報逐頁稿與簡報提示詞，觀看方式選「兩者都要」。
+- 必須：頁數分配表只在 01 內部工作稿第 1 節；03、04 的每頁標題格式為「第 n 頁｜標題」；06 的敘事結構不用「幕」這個字；check_claims 沒有 `EXTERNAL_ACT_LABEL` 違規
+- 不可：標題、標題大綱、頁面文字、講者備註、銜接句出現「第一幕」「五幕」「本幕」；把「認知破局」等幕的名稱當章節標籤；因為拿掉標籤而打亂五幕順序
+
 ## D. 產品類別（沿用原版 golden case）
 
 | 案例 | 輸入 | 必須 | 不可 |
@@ -193,3 +198,7 @@
    → 已修：`references/disam/ingredient-cards.md` 與 `templates/disam-ingredient-card.md`；資料卡放 repo 外 `~/DISAM-原料資料卡/`。
 6. 3 位聽眾被寫成「單次聽眾，不加附錄」。
    → 已修：`deck-architecture.md` 第 5 節檢核表加附錄層級檢查。
+
+### 2026-11-02 依使用者回饋修正，待下次實測以 C13 驗證
+1. 簡報檔的每頁標題與頁數分配表帶著「第一幕」，做成投影片後會出現在畫面上。
+   → 已修：`templates/deck-content.md` 拿掉幕的標籤，頁數分配表移到內部工作稿第 1 節；`templates/deck-prompt.md` 改用段落描述；check_claims 新增 `EXTERNAL_ACT_LABEL`（違規）。
